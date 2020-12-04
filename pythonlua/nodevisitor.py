@@ -78,6 +78,26 @@ class NodeVisitor(ast.NodeVisitor):
 
         self.emit("{target} = {line}".format(target=target, line=line))
 
+    def visit_AnnAssign(self, node):
+        target = self.visit_all(node.target, inline=True)
+        value = self.visit_all(node.value, inline=True)
+
+        local_keyword = ""
+
+        last_ctx = self.context.last()
+
+        if last_ctx["class_name"]:
+            target = ".".join([last_ctx["class_name"], target])
+
+        if "." not in target and not last_ctx["locals"].exists(target):
+            local_keyword = "local "
+            last_ctx["locals"].add_symbol(target)
+
+
+        self.emit("{local}{target} = {value}".format(local=local_keyword,
+                                                     target=target,
+                                                     value=value))
+
     def visit_Assert(self,node):
         line = "assert({})"
         self.emit(line.format(self.visit_all(node.test, True)))
@@ -93,6 +113,14 @@ class NodeVisitor(ast.NodeVisitor):
 
     def visit_BinOp(self, node):
         """Visit binary operation"""
+        # handle grama candy
+        op_pair = (node.left.__class__.__name__, node.op.__class__.__name__, node.right.__class__.__name__)
+
+        name = "binOP_" + "_".join(op_pair)
+        if hasattr(self, name):
+            if getattr(self, name)(node):
+                return
+
         operation = BinaryOperationDesc.OPERATION[node.op.__class__]
         line = "({})".format(operation["format"])
         values = {
@@ -102,6 +130,40 @@ class NodeVisitor(ast.NodeVisitor):
         }
 
         self.emit(line.format(**values))
+
+    def binOP_Str_Mult_Num(self, node):
+        s = f'(function() local fmt = "" for i in range({self.visit_all(node.right, True)}) do fmt = fmt .. {self.visit_all(node.left, True)} end do return fmt end end)()'
+        self.emit(s)
+        return True
+
+    def binOP_Str_Mult_Call(self, node):
+        s = f'(function() local fmt = "" for i in range({self.visit_all(node.right, True)}) do fmt = fmt .. {self.visit_all(node.left, True)} end do return fmt end end)()'
+        self.emit(s)
+        return True
+
+    def binOP_List_Mult_Num(self, node):
+        if not node.left.elts or len(node.left.elts) != 1:
+            return False
+        element = self.visit_all(node.left.elts[0], inline=True)
+        s = f'(function() local l = {self.visit_all(node.left, True)} for i in range({self.visit_all(node.right, True)} - 1) do l:append({element}) end do return l end end)()'
+        self.emit(s)
+        return True
+
+    def binOP_Str_Mod_Str(self, node):
+        # format string using %
+        s = f'string.format({self.visit_all(node.left, True)}, {self.visit_all(node.right, True)})'
+        self.emit(s)
+        return True
+
+    def binOP_Str_Mod_Call(self, node):
+        fmt = self.visit_all(node.left, True)
+        base = ""
+        if fmt.count("%") > 1:
+            base = "unpack"
+        s = f'string.format({fmt}, {base}({self.visit_all(node.right, True)}))'
+        self.emit(s)
+        return True
+
 
     def visit_BoolOp(self, node):
         """Visit boolean operation"""
@@ -566,9 +628,11 @@ class NodeVisitor(ast.NodeVisitor):
 
     def visit_Return(self, node):
         """Visit return"""
+        self.emit("do")
         line = "return "
         line += self.visit_all(node.value, inline=True)
         self.emit(line)
+        self.emit("end")
 
 
     def visit_Slice(self,node):

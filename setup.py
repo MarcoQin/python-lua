@@ -3,6 +3,11 @@
 
 from setuptools import setup, find_packages
 
+entry_points = """
+[console_scripts]
+tolua = pythonlua.main:main
+"""
+
 setup(
     name="pythonlua",
     version="1.2.0",
@@ -11,7 +16,9 @@ setup(
     author_email="mail@eremindmitry.ru, bartlimburg@gmail.com",
     licence="Apache",
     packages=find_packages(),
+    data_files=[("pythonlua",['pythonlua/luainit.lua']), ("",['LICENSE'])],
     package_data={'': ['LICENSE', 'pythonlua/luainit.lua']},
+    entry_points=entry_points,
     include_package_data=True,
     long_description="",
 )

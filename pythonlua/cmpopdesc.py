@@ -19,5 +19,5 @@ class CompareOperationDesc:
             "format": "not operator_in({left}, {right})",
         },
         ast.Is: "==",  # perhaps this should be more elaborate at some point...
-        ast.IsNot: "!="
+        ast.IsNot: "~="
     }
