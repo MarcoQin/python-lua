@@ -174,6 +174,11 @@ class NodeVisitor(ast.NodeVisitor):
 
     def visit_Break(self, node):
         """Visit break"""
+        # self.emit("break")
+
+        last_ctx = self.context.last()
+        loop_label = last_ctx["loop_label_name"]
+        self.emit(f"{loop_label} = \"break\"")
         self.emit("break")
 
     def visit_Bytes(self, node):
@@ -192,6 +197,9 @@ class NodeVisitor(ast.NodeVisitor):
         else:
             name = self.visit_all(node.func, inline=True)
         arguments = [self.visit_all(arg, inline=True) for arg in node.args]
+        #TODO node.keywords
+        for kw in node.keywords:
+            arguments.append(self.visit_all(kw.value, True))
         self.emit(line.format(name=name, arguments=", ".join(arguments)))
 
     def visit_ClassDef(self, node):
@@ -292,8 +300,11 @@ class NodeVisitor(ast.NodeVisitor):
     def visit_Continue(self, node):
         """Visit continue"""
         last_ctx = self.context.last()
-        line = "goto {}".format(last_ctx["loop_label_name"])
+        line = "-- goto {}".format(last_ctx["loop_label_name"])
         self.emit(line)
+        loop_label = last_ctx["loop_label_name"]
+        self.emit(f"{loop_label} = \"continue\"")
+        self.emit("break")
 
     def visit_Delete(self, node):
         """Visit delete"""
@@ -470,11 +481,21 @@ class NodeVisitor(ast.NodeVisitor):
         self.context.push({
             "loop_label_name": continue_label,
         })
+
+        while_body = []
+        while_body.append(f"local {continue_label}")
+
+        while_body.append("repeat")
+
         self.visit_all(node.body)
         self.context.pop()
 
-        self.output[-1].append("::{}::".format(continue_label))
+        while_body.append(self.output.pop())
 
+        while_body.append("until true")
+        while_body.append([f"if {continue_label} == \"break\" then", ["break"], "end"])
+
+        self.emit(while_body)
         self.emit("end")
 
     def visit_Global(self, node):
@@ -628,11 +649,9 @@ class NodeVisitor(ast.NodeVisitor):
 
     def visit_Return(self, node):
         """Visit return"""
-        self.emit("do")
         line = "return "
         line += self.visit_all(node.value, inline=True)
         self.emit(line)
-        self.emit("end")
 
 
     def visit_Slice(self,node):
@@ -725,11 +744,21 @@ class NodeVisitor(ast.NodeVisitor):
         self.context.push({
             "loop_label_name": continue_label,
         })
+
+        while_body = []
+        while_body.append(f"local {continue_label}")
+
+        while_body.append("repeat")
+
         self.visit_all(node.body)
         self.context.pop()
 
-        self.output[-1].append("::{}::".format(continue_label))
+        while_body.append(self.output.pop())
 
+        while_body.append("until true")
+        while_body.append([f"if {continue_label} == \"break\" then", ["break"], "end"])
+
+        self.emit(while_body)
         self.emit("end")
 
     def visit_With(self, node):
@@ -757,6 +786,9 @@ class NodeVisitor(ast.NodeVisitor):
     def generic_visit(self, node):
         """Unknown nodes handler"""
         raise RuntimeError("Unknown node: {}".format(node))
+
+    def visit_NoneType(self, node):
+        self.emit("nil")
 
     def visit_all(self, nodes, inline=False):
         """Visit all nodes in the given list"""
